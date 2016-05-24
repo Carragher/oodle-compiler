@@ -1,0 +1,15 @@
+class breakit is
+  mov: int
+  x: int
+  y: int
+  
+  start() is
+  begin
+  
+    mov := 12 * in.readint()   ~ Enter 10
+    out.writeint(mov)           ~ 120
+    
+
+  end start
+  
+end breakit

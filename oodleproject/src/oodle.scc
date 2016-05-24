@@ -1,0 +1,332 @@
+Package com.bju.cps450;
+
+Helpers
+
+  tab                 = 9;
+  line_feed           = 10;
+  carriage_return     = 13;
+  underscore = '_';
+
+  lcfr = [10+13] | (10 13);
+
+
+  negative = '-';
+
+  letter              = ['a'..'z'] | ['A'..'Z'];
+  octal               = ['0'..'7'];
+  digit               = ['0'..'9'];
+  printable = [32..127];
+  blank = ' ' | tab;
+  all_chars = [0x0 .. 0xFFFF];
+  no_lcfr = [printable - [10 + 13]];
+
+  
+Tokens
+
+  string               = 'string';
+
+  continuation = '_' lcfr;
+
+  bool = 'boolean';
+
+  begin = 'begin';
+
+  classkey = 'class';
+
+  else = 'else';
+
+  end = 'end';
+
+  from = 'from';
+
+  if = 'if';
+
+  inherits = 'inherits';
+
+  int = 'int';
+
+  is = 'is';
+
+  loop = 'loop';
+
+  me = 'me';
+
+  new = 'new';
+
+  null = 'null';
+
+  while = 'while';
+
+  then                 = 'then';
+
+  true                 = 'true';
+
+  false                = 'false';
+
+  and                  = 'and';
+
+  or                   = 'or';
+
+  not                  = 'not';
+
+  tab                  = 'tab';
+
+  dot                  = '.';
+
+  assign_op = ':=';
+
+  l_paren = '(';
+
+  r_paren = ')';
+
+  l_bracket = '[';
+
+  r_bracket = ']';
+
+  l_curly = '{';
+
+  r_curly = '}';
+
+  comma = ',';
+
+  semi_colon = ';';
+
+  colon = ':';
+
+
+
+  concat = '&';
+
+  plus = '+';
+
+  minus = '-';
+
+  star = '*';
+
+  div = '/';
+
+  gthan = '>';
+
+  lthan = '<';
+
+  gthan_eq = '>=';
+
+  lthan_eq = '<=';
+
+  equal = '=';
+
+ // cr = lcfr;
+
+  spctab = blank;
+
+
+
+
+
+  id = (underscore | letter) ( digit | letter | underscore)*;
+
+  // An identifier is a sequence of letters, digits, and
+  //underscores (_) starting with an underscore or letter,
+  //other than a keyword.
+
+
+  comment = '~' no_lcfr*;
+
+  int_literal = negative? digit+;
+
+  str_lit = '"' (([printable - ['"' + '\']]) | ('\' ((octal octal octal) | 't' | 'n' | 'f' | 'r' | '"' | '\')))* '"';
+
+  illegal_str_lit = '"' ([printable - '"'] | '\"')* '"';
+
+  linefilter = (blank | lcfr)* lcfr;
+
+  unterm_str = '"' (([printable - '"'] | '\"')* lcfr);
+
+  unknown_char = all_chars;
+
+Ignored Tokens
+
+    spctab, comment, continuation;
+
+
+Productions
+
+    start {-> start} = [first]:crs? class_def class_defs* [rest]:crs? {-> New start([class_def.class_def, class_defs.class_def]) };
+
+    crs = T.linefilter+;
+
+    class_defs {-> class_def } = crs class_def {-> class_def.class_def};
+
+    class_def {-> class_def } = T.classkey [id1]:T.id inherits_from? T.is crs
+                var_dec*
+                meth_def*
+                T.end [id2]:T.id
+                {-> New class_def(id1, inherits_from.extends_prod, [var_dec], [meth_def], id2)  };
+
+    inherits_from {-> extends_prod} = T.inherits T.from T.id {-> New extends_prod(id)};
+
+    var_dec {-> var_dec}  = T.id type_def? type_init? crs {-> New var_dec(id, type_def.type, type_init.expression)};
+
+    type_def {-> type} = T.colon type_name {-> type_name.type};
+
+    type_name {-> type} = {boolean} T.bool {-> New type.boolean(bool)}
+                | {int} T.int {-> New type.int(int)}
+                | {string} T.string {-> New type.string(string)}
+                | {array} type_name T.l_bracket expression? T.r_bracket {-> New type.array(type_name.type)}
+                | {custom} T.id {-> New type.custom(id)};
+
+    //and this is when you were dumb// austin says im ok for now
+    type_init {-> expression} = T.assign_op expression {-> expression.expression};
+
+    meth_def {-> meth_def} = [id1]:T.id T.l_paren args? T.r_paren meth_type? T.is [cr1]:crs
+                     var_dec*
+                     T.begin [cr2]:crs
+                     stmt_lst?
+                     T.end [id2]:T.id [cr3]:crs {-> New meth_def(meth_type.meth_type, id1, [args.argument], [var_dec.var_dec], [stmt_lst.statement], id2 )};
+
+    meth_type {-> meth_type} = type_def {-> New meth_type(type_def.type)};
+
+    args {-> argument*} = arg argzz* {-> [arg.argument, argzz.argument]};
+
+    argzz {-> argument} = T.semi_colon arg {-> arg.argument};
+
+    arg {-> argument}= T.id type_def {-> New argument(id, type_def.type)};
+
+    stmt_lst {-> statement*} = stmt stmt_end* crs {-> [stmt.statement, stmt_end.statement]};
+
+    stmt_end {-> statement} = crs stmt {-> stmt.statement};
+
+    stmt {-> statement} = {if_stmt} if_stmt {-> if_stmt.statement}
+            | {call_stmt} call_stmt {-> call_stmt.statement}
+            | {assign_stmt} assign_stmt {-> assign_stmt.statement}
+            | {loop_stmt} loop_stmt {-> loop_stmt.statement };
+
+    if_stmt {-> statement} = [if1]:T.if expression T.then crs
+                stmt_lst?
+                else_stmt?
+                T.end [if2]:T.if {-> New statement.if( [stmt_lst.statement], [else_stmt.statement], expression.expression)};
+
+    else_stmt {-> statement*} = T.else crs stmt_lst? {-> [stmt_lst.statement]};
+
+    call_stmt {-> statement} = express_dot? T.id T.l_paren express_lst? T.r_paren {-> New statement.method_call(express_dot.expression, id, [express_lst.expression])};
+
+    assign_stmt {-> statement} = T.id T.assign_op expression {-> New statement.assign_op(id, expression.expression)};
+
+    loop_stmt {-> statement} = [loop1]:T.loop T.while expression crs
+                stmt_lst?
+                T.end [loop2]:T.loop {-> New statement.while( [stmt_lst.statement], expression.expression) };
+
+    express_lst {-> expression*}  = expression express_end* {-> [expression.expression, express_end.expression]};
+
+    express_end {-> expression} = T.comma expression {-> expression.expression};
+
+    expression {-> expression} = express1 {-> express1.expression};
+
+    express1 {-> expression} = {or} express1 T.or express2 {-> New expression.or(express1.expression, express2.expression)}
+                | {other} express2 {-> express2.expression};
+
+    express2 {-> expression} = {and} express2 T.and express3 {-> New expression.and(express2.expression, express3.expression)}
+                | {other} express3 {-> express3.expression};
+
+    express3 {-> expression} = {equals} [frst]:express4 T.equal [scnd]:express4 {-> New expression.equal(frst.expression, scnd.expression)}
+                | {greater} [frst]:express4 T.gthan [scnd]:express4 {-> New expression.greater(frst.expression, scnd.expression)}
+                | {greater_than} [frst]:express4 T.gthan_eq [scnd]:express4 {-> New expression.greater_than(frst.expression, scnd.expression)}
+                | {lesser} [frst]:express4 T.lthan [scnd]:express4 {-> New expression.lesser(frst.expression, scnd.expression)}
+                | {less_than} [frst]:express4 T.lthan_eq [scnd]:express4 {-> New expression.less_than(frst.expression, scnd.expression)}
+                | {other} express4  {-> express4.expression} ;
+
+    express4 {-> expression} = {concat} express4 T.concat express5 {-> New expression.concat(express4.expression, express5.expression)}
+                | {other} express5 {-> express5.expression};
+
+    express5 {-> expression} = {add} express5 T.plus express6 {-> New expression.add(express5.expression,express6.expression)}
+                | {minus} express5 T.minus express6 {-> New expression.minus(express5.expression, express6.expression)}
+                | {other} express6 {-> express6.expression};
+
+    express6 {-> expression} = {mult} express6 T.star express7 {-> New expression.mult(express6.expression,express7.expression)}
+                | {div} express6 T.div express7 {-> New expression.div(express6.expression,express7.expression)}
+                | {other} express7 {-> express7.expression};
+
+    express7 {-> expression} = {neg} T.minus express8 {-> New expression.neg(express8.expression)}
+                | {pos} T.plus express8 {-> New expression.pos(express8.expression)}
+                | {not} T.not express8 {-> New expression.not(express8.expression)}
+                | {other} express8 {-> express8.expression};
+
+    express8 {-> expression} = {meth_dot} express_dot? T.id T.l_paren express_lst? T.r_paren {-> New expression.meth_expr(express_dot.expression,id, [express_lst.expression])}
+                | {new} T.new T.id {-> New expression.new(id)}
+                | {int} T.int_literal {-> New expression.int(int_literal)}
+                | {string} T.str_lit {-> New expression.string(str_lit)}
+                | {true} T.true {-> New expression.true()}
+                | {false} T.false {-> New expression.false()}
+                | {id} T.id {-> New expression.id(id)}
+                | {me} T.me {-> New expression.me()}
+                | {null} T.null {-> New expression.null()}
+                | {array} T.id T.l_bracket expression T.r_bracket {-> New expression.arrexp(id,expression)}
+                | {paren} T.l_paren expression T.r_paren {-> expression.expression};
+
+
+
+
+
+
+    express_dot {-> expression} = express8 T.dot {-> express8.expression};
+
+    array {-> expression} = T.l_bracket expression T.r_bracket {-> expression.expression};
+
+
+
+Abstract Syntax Tree
+
+    start = class_def* ;
+
+    class_def = [begin]:id extends_prod? var_dec* meth_def* [end]:id;
+
+    extends_prod = id;
+
+    var_dec = id type? expression?;
+
+    meth_def =meth_type? [begin]:id argument* var_dec* statement* [end]:id ;
+
+    meth_type = type;
+
+
+
+    type = {int} int
+        |  {boolean} bool
+        |  {string} string
+        |  {array} type
+        |  {custom} id;
+
+    argument = id type;
+
+    statement = {if}  [true]:statement* [false]:statement* [condition]:expression
+        | {while}  statement* [condition]:expression
+        | {assign_op} id expression
+
+        | {method_call} [dot]:expression? id [params]:expression*;
+
+    expression = {or} [lhs]:expression [rhs]:expression
+        | {and} [lhs]:expression [rhs]:expression
+        | {greater_than} [lhs]:expression [rhs]:expression
+         | {equal} [lhs]:expression [rhs]:expression
+        | {greater} [lhs]:expression [rhs]:expression
+        | {less_than} [lhs]:expression [rhs]:expression
+        | {lesser} [lhs]:expression [rhs]:expression
+        | {add} [lhs]:expression [rhs]:expression
+        | {minus} [lhs]:expression [rhs]:expression
+        | {mult} [lhs]:expression [rhs]:expression
+        | {div} [lhs]:expression [rhs]:expression
+        | {concat} [lhs]:expression [rhs]:expression
+        | {not} expression
+        | {neg} expression
+        | {pos} expression
+        | {new} id
+                        | {int} int_literal
+                        | {string} str_lit
+                        | {true}
+                        | {false}
+                        | {id} id
+                        | {me}
+                        | {null}
+                        |{arrexp} id expression
+                        | {meth_expr} [lhs]:expression? id [rhs]:expression*
+                        ;
